@@ -2,14 +2,26 @@ package com.example.yaramobile.downloadmanagerexample
 
 import android.app.DownloadManager
 import android.app.IntentService
+import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import com.example.yaramobile.downloadmanagerexample.database.DownloadDao
+import com.example.yaramobile.downloadmanagerexample.database.DownloadDatabase
+import com.example.yaramobile.downloadmanagerexample.database.DownloadModel
+import java.net.URL
 
 class DownloadService : IntentService("DownloadService") {
 
+    lateinit var callback: DownloadActionListener
+    private val CALLBACK_LIMIT_TIME: Long = 100
+    private var downloadDao: DownloadDao? = null
+
     companion object {
+        fun getMyInstance(callback: DownloadActionListener): DownloadService? {
+            return instance
+        }
 
         private val DOWNLOAD_PATH = "com.spartons.androiddownloadmanager_DownloadSongService_Download_path"
         private val DESTINATION_PATH = "com.spartons.androiddownloadmanager_DownloadSongService_Destination_path"
@@ -17,6 +29,7 @@ class DownloadService : IntentService("DownloadService") {
         var downloadManager: DownloadManager? = null
         var downloadManagerListener: DownloadManagerListener? = null
         var downloadId: Long? = null
+        var instance: DownloadService? = null
 
         fun getDownloadService(callingClassContext: Context, downloadPath: String, destinationPath: String): Intent {
             return Intent(callingClassContext, DownloadService::class.java)
@@ -36,20 +49,49 @@ class DownloadService : IntentService("DownloadService") {
         }
     }
 
-    override fun onHandleIntent(intent: Intent?) {
-        val downloadPath = intent!!.getStringExtra(DOWNLOAD_PATH)
-        val destinationPath = intent.getStringExtra(DESTINATION_PATH)
-        startDownload(downloadPath, destinationPath)
+    override fun onCreate() {
+        super.onCreate()
+        initDataBase()
+
+
     }
 
-    private fun startDownload(downloadPath: String, destinationPath: String) {
+    override fun onHandleIntent(intent: Intent?) {
+        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+
+        val downloadPath = intent?.getStringExtra(DOWNLOAD_PATH)
+        val destinationPath = intent?.getStringExtra(DESTINATION_PATH)
+        startDownload(downloadPath, destinationPath)
+
+        return Service.START_STICKY
+    }
+
+    private fun initDataBase() {
+        downloadDao = DownloadDatabase.getDownloadDatabase(applicationContext).downloadDao()
+    }
+
+
+    private fun startDownload(downloadPath: String?, destinationPath: String?) {
+
+        val fileName: CharSequence? =
+            downloadPath?.lastIndexOf('.')?.let { downloadPath.substring(downloadPath?.lastIndexOf('/') + 1, it) }
+
+        Log.e(
+            "DownloadService",
+            "startDownload" + URL(downloadPath).file + " " + URL(downloadPath).port + " " + URL(downloadPath).protocol + " " + URL(
+                downloadPath
+            ).userInfo + " " + URL(downloadPath).ref
+        )
         val uri = Uri.parse(downloadPath) // Path where you want to download file.
         downloadManager = (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager)
         val request = DownloadManager.Request(uri)
 
         request.setAllowedNetworkTypes(DownloadManager.Request.NETWORK_MOBILE or DownloadManager.Request.NETWORK_WIFI)  // Tell on which network you want to download file.
         request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)  // This will show notification on top when downloading the file.
-        request.setTitle("Downloading a file") // Title for notification.
+        request.setTitle(fileName) // Title for notification.
         request.setVisibleInDownloadsUi(true)
         request.setDestinationInExternalPublicDir(destinationPath, uri.getLastPathSegment())  // Storage directory path
         downloadId = downloadManager?.enqueue(request) // This will start downloading
@@ -125,6 +167,7 @@ class DownloadService : IntentService("DownloadService") {
                                 bytesTotal
                             )
                             downloading = false
+                            stopSelf()
                         }
                     }
 
@@ -133,25 +176,19 @@ class DownloadService : IntentService("DownloadService") {
                 }
                 cursor?.close()
 
-                Thread.sleep(100)
+                Thread.sleep(CALLBACK_LIMIT_TIME)
             }
         })
+
+        fun stopService() {
+            this.stopSelf()
+        }
 
         mThread?.start()
     }
 
-    interface DownloadManagerListener {
-
-        fun downloadFailed(errorMessage: String, bytesDownloaded: Int?, bytesTotal: Int?)
-
-        fun downloadPaused(pauseMessage: String, bytesDownloaded: Int?, bytesTotal: Int?)
-
-        fun downloadPending(bytesDownloaded: Int?, bytesTotal: Int?)
-
-        fun downloadRunning(bytesDownloaded: Int?, bytesTotal: Int?)
-
-        fun downloadSuccessful(bytesDownloaded: Int?, bytesTotal: Int?)
-
-        fun downloadStopped()
+    private fun saveDownloadModel(downloadModel: DownloadModel?) {
+        downloadDao?.saveDownloadModel(downloadModel)
     }
+
 }
