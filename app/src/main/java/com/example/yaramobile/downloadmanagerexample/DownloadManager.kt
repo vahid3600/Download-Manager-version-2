@@ -1,17 +1,24 @@
 package com.example.yaramobile.downloadmanagerexample
 
+import android.app.Application
+import android.arch.lifecycle.LiveData
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import android.util.Log
+import com.example.yaramobile.downloadmanagerexample.database.DownloadDatabase
+import com.example.yaramobile.downloadmanagerexample.database.DownloadModel
 
 class DownloadManager {
 
+    var intent: Intent? = null
+
     companion object {
 
-        private var context: Context? = null
         var instance: DownloadManager? = null
+        var context: Context? = null
 
-        fun initDownloadmanager(context: Context): DownloadManager? {
-
+        fun initDownloadmanager(context: Context?): DownloadManager? {
             this.context = context
 
             if (instance == null) {
@@ -19,23 +26,70 @@ class DownloadManager {
             }
             return instance
         }
-
     }
 
-    private fun startDownload() {
+    fun startDownload(downloadUri: String, downloadPath: String) {
+        intent = DownloadService.getDownloadService(
+            context,
+            downloadUri,
+            downloadPath,
+            object : DownloadManagerListener {
+                override fun downloadFailed(downloadModel: DownloadModel) {
+                    Log.e("DownloadManager", "downloadFailed")
+                    checkDownloadDatabase()
+
+                }
+
+                override fun downloadPaused(downloadModel: DownloadModel) {
+                    Log.e("DownloadManager", "downloadPaused")
+                    checkDownloadDatabase()
+
+                }
+
+                override fun downloadPending(downloadModel: DownloadModel) {
+                    Log.e("DownloadManager", "downloadPending")
+                    checkDownloadDatabase()
+
+                }
+
+                override fun downloadRunning(downloadModel: DownloadModel) {
+                    Log.e("DownloadManager", "downloadRunning")
+                    checkDownloadDatabase()
+
+                }
+
+                override fun downloadSuccessful(downloadModel: DownloadModel) {
+                    Log.e("DownloadManager", "downloadSuccessful")
+                    checkDownloadDatabase()
+
+                }
+
+                override fun downloadStopped(downloadModel: DownloadModel) {
+                    Log.e("DownloadManager", "downloadStopped")
+                    checkDownloadDatabase()
+
+                }
+
+            }
+        )
+
         context?.startService(
-            DownloadService.getDownloadService(
-                context!!,
-                "http://5.239.244.167:1337/lyrics/api/files/bjCbe1h7B3DrLpZmCOwj1RYpgOPL4z8g/33cb19f604cbc1b4a4de95b8c946bac5_hWOMf19fFuc.mp4",
-                getPath("http://5.239.244.167:1337/lyrics/api/files/bjCbe1h7B3DrLpZmCOwj1RYpgOPL4z8g/33cb19f604cbc1b4a4de95b8c946bac5_hWOMf19fFuc.mp4")
-            )
+            intent
         )
     }
 
-    private fun setDownloadListener(downloadManagerListener: DownloadManagerListener){
-        DownloadService.setDownloadListener(downloadManagerListener)
+    fun stopDownload(downloadId: Long?) {
+        context?.stopService(intent)
+        DownloadService.stopDownload(downloadId)
     }
 
+    public fun getDownloadModelLiveData(downloadId: Int): LiveData<DownloadModel> {
+        return DownloadDatabase.getDownloadDatabase(context).downloadDao().getDownloadModel(downloadId)
+    }
+
+    fun getListDownloadModelLiveData(): LiveData<List<DownloadModel>> {
+        return DownloadDatabase.getDownloadDatabase(context).downloadDao().listDownloadModel
+    }
 
     protected fun getPath(url: String?): String {
         return if (url != null)
@@ -46,5 +100,12 @@ class DownloadManager {
 
     protected fun getSaveDir(): String {
         return context?.filesDir?.absolutePath.toString()
+    }
+
+    protected fun checkDownloadDatabase() {
+        Log.e("DownloadManager",
+            "checkDownloadDatabase " + DownloadDatabase.getDownloadDatabase(context).downloadDao()
+                .getDownloadModelListByStatus(android.app.DownloadManager.STATUS_RUNNING).size
+        )
     }
 }

@@ -1,5 +1,7 @@
 package com.example.yaramobile.downloadmanagerexample
 
+import android.arch.lifecycle.LiveData
+import android.arch.lifecycle.Observer
 import android.net.Uri
 import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
@@ -16,38 +18,29 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         var downloadService: DownloadService = DownloadService()
+        var downloadManager = DownloadManager.initDownloadmanager(applicationContext)
 
-        start.setOnClickListener(object : View.OnClickListener {
-            override fun onClick(v: View?) {
-                startService(
-                    DownloadService.getDownloadService(
-                        applicationContext,
-                        "http://5.239.244.167:1337/lyrics/api/files/bjCbe1h7B3DrLpZmCOwj1RYpgOPL4z8g/33cb19f604cbc1b4a4de95b8c946bac5_hWOMf19fFuc.mp4",
-                        getPath("http://5.239.244.167:1337/lyrics/api/files/bjCbe1h7B3DrLpZmCOwj1RYpgOPL4z8g/33cb19f604cbc1b4a4de95b8c946bac5_hWOMf19fFuc.mp4")
-                    )
-                )
-            }
-        })
+        start.setOnClickListener {
+            downloadManager?.startDownload(
+                "http://5.239.244.167:1337/lyrics/api/files/bjCbe1h7B3DrLpZmCOwj1RYpgOPL4z8g/33cb19f604cbc1b4a4de95b8c946bac5_hWOMf19fFuc.mp4",
+                getPath("http://5.239.244.167:1337/lyrics/api/files/bjCbe1h7B3DrLpZmCOwj1RYpgOPL4z8g/33cb19f604cbc1b4a4de95b8c946bac5_hWOMf19fFuc.mp4")
+            )
+        }
 
-        DownloadService.getMyInstance(object :DownloadActionListener{
-            override fun stopDownload() {
-                TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
-            }
+        downloadManager?.getListDownloadModelLiveData()?.observe(this, object : Observer<List<DownloadModel>> {
+            override fun onChanged(t: List<DownloadModel>?) {
 
-            override fun getDownloadModel(): DownloadModel {
-                TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
-            }
+                Log.e("MainActivity", "onChanged " + t?.size)
 
-            override fun getAllDownloadModel(): List<DownloadModel> {
-                TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
             }
 
         })
-        stop.setOnClickListener(object : View.OnClickListener {
-            override fun onClick(v: View?) {
-                DownloadService.stopDownload()
-            }
-        })
+
+        fun checkDownloadQueue(downloadModel: DownloadModel){
+
+        }
+
+//        stop.setOnClickListener { downloadManager?.stopDownload() }
 
 //        DownloadService.setDownloadListener(object : DownloadService.DownloadManagerListener {
 //

@@ -21,10 +21,16 @@ public interface DownloadDao {
     @Query("select * from DownloadModel where id = :id")
     LiveData<DownloadModel> getDownloadModel(int id);
 
+    @Query("select * from DownloadModel")
+    LiveData<List<DownloadModel>> getListDownloadModel();
+
     @Query("select * from DownloadModel where status = 'completed'")
     LiveData<List<DownloadModel>> getAllCompletedDownloadModel();
 
     @Query("select * from DownloadModel")
     List<DownloadModel> getAllDownloadModels();
+
+    @Query("select * from DownloadModel where status = :status")
+    List<DownloadModel> getDownloadModelListByStatus(int status);
 
 }

@@ -1,16 +1,18 @@
 package com.example.yaramobile.downloadmanagerexample
 
+import com.example.yaramobile.downloadmanagerexample.database.DownloadModel
+
 interface DownloadManagerListener {
 
-    fun downloadFailed(errorMessage: String, bytesDownloaded: Int?, bytesTotal: Int?)
+    fun downloadFailed(downloadModel: DownloadModel)
 
-    fun downloadPaused(pauseMessage: String, bytesDownloaded: Int?, bytesTotal: Int?)
+    fun downloadPaused(downloadModel: DownloadModel)
 
-    fun downloadPending(bytesDownloaded: Int?, bytesTotal: Int?)
+    fun downloadPending(downloadModel: DownloadModel)
 
-    fun downloadRunning(bytesDownloaded: Int?, bytesTotal: Int?)
+    fun downloadRunning(downloadModel: DownloadModel)
 
-    fun downloadSuccessful(bytesDownloaded: Int?, bytesTotal: Int?)
+    fun downloadSuccessful(downloadModel: DownloadModel)
 
-    fun downloadStopped()
+    fun downloadStopped(downloadModel: DownloadModel)
 }

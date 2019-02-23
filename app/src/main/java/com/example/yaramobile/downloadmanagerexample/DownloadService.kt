@@ -14,15 +14,12 @@ import java.net.URL
 
 class DownloadService : IntentService("DownloadService") {
 
-    lateinit var callback: DownloadActionListener
     private val CALLBACK_LIMIT_TIME: Long = 100
     private var downloadDao: DownloadDao? = null
 
     companion object {
-        fun getMyInstance(callback: DownloadActionListener): DownloadService? {
-            return instance
-        }
 
+        val STATUS_QUEUE = 0
         private val DOWNLOAD_PATH = "com.spartons.androiddownloadmanager_DownloadSongService_Download_path"
         private val DESTINATION_PATH = "com.spartons.androiddownloadmanager_DownloadSongService_Destination_path"
         var mThread: Thread? = null
@@ -31,29 +28,28 @@ class DownloadService : IntentService("DownloadService") {
         var downloadId: Long? = null
         var instance: DownloadService? = null
 
-        fun getDownloadService(callingClassContext: Context, downloadPath: String, destinationPath: String): Intent {
-            return Intent(callingClassContext, DownloadService::class.java)
+        fun getDownloadService(
+            context: Context?,
+            downloadPath: String,
+            destinationPath: String,
+            downloadManagerListener: DownloadManagerListener
+            ): Intent {
+            this.downloadManagerListener = downloadManagerListener
+            return Intent(context, DownloadService::class.java)
                 .putExtra(DOWNLOAD_PATH, downloadPath)
                 .putExtra(DESTINATION_PATH, destinationPath)
         }
 
-        fun setDownloadListener(downloadManagerListener: DownloadManagerListener) {
-            this.downloadManagerListener = downloadManagerListener
-        }
-
-        fun stopDownload() {
+        fun stopDownload(downloadId: Long?) {
             downloadId?.let { downloadManager?.remove(it) }
             mThread?.isInterrupted
             mThread?.join()
-            downloadManagerListener?.downloadStopped()
         }
     }
 
     override fun onCreate() {
         super.onCreate()
         initDataBase()
-
-
     }
 
     override fun onHandleIntent(intent: Intent?) {
@@ -64,7 +60,22 @@ class DownloadService : IntentService("DownloadService") {
 
         val downloadPath = intent?.getStringExtra(DOWNLOAD_PATH)
         val destinationPath = intent?.getStringExtra(DESTINATION_PATH)
+
         startDownload(downloadPath, destinationPath)
+
+        saveDownloadModel(
+            DownloadModel(
+                -1,
+                downloadPath,
+                destinationPath,
+                "",
+                STATUS_QUEUE,
+                0,
+                0,
+                0,
+                ""
+            )
+        )
 
         return Service.START_STICKY
     }
@@ -77,14 +88,8 @@ class DownloadService : IntentService("DownloadService") {
     private fun startDownload(downloadPath: String?, destinationPath: String?) {
 
         val fileName: CharSequence? =
-            downloadPath?.lastIndexOf('.')?.let { downloadPath.substring(downloadPath?.lastIndexOf('/') + 1, it) }
+            downloadPath?.lastIndexOf('.')?.let { downloadPath.substring(downloadPath.lastIndexOf('/') + 1, it) }
 
-        Log.e(
-            "DownloadService",
-            "startDownload" + URL(downloadPath).file + " " + URL(downloadPath).port + " " + URL(downloadPath).protocol + " " + URL(
-                downloadPath
-            ).userInfo + " " + URL(downloadPath).ref
-        )
         val uri = Uri.parse(downloadPath) // Path where you want to download file.
         downloadManager = (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager)
         val request = DownloadManager.Request(uri)
@@ -95,11 +100,10 @@ class DownloadService : IntentService("DownloadService") {
         request.setVisibleInDownloadsUi(true)
         request.setDestinationInExternalPublicDir(destinationPath, uri.getLastPathSegment())  // Storage directory path
         downloadId = downloadManager?.enqueue(request) // This will start downloading
-
-        downloadManagerListener?.let { getDownloadStatus(it, downloadId) }
+        getDownloadStatus(downloadId)
     }
 
-    private fun getDownloadStatus(downloadManagerListener: DownloadManagerListener?, downloadId: Long?) {
+    private fun getDownloadStatus(downloadId: Long?) {
 
         mThread = Thread(Runnable {
 
@@ -113,14 +117,15 @@ class DownloadService : IntentService("DownloadService") {
 
                 cursor?.moveToFirst()
 
-                Log.e("DownloadSongService", "getDownloadStatus " + cursor?.columnCount + " " + cursor?.count)
                 if (cursor?.count != 0) {
-                    val columnIndex = cursor?.getColumnIndex(DownloadManager.COLUMN_STATUS)
-                    val status = columnIndex?.let { cursor.getInt(it) }
-                    val columnReason = cursor?.getColumnIndex(DownloadManager.COLUMN_REASON)
-                    val reason = columnReason?.let { cursor.getInt(it) }
+                    val id = cursor?.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_ID))
+                    val uri = cursor?.getString(cursor.getColumnIndex(DownloadManager.COLUMN_URI))
+                    val path = cursor?.getString(cursor.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI))
+                    val title = cursor?.getString(cursor.getColumnIndex(DownloadManager.COLUMN_TITLE))
+                    val status = cursor?.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_STATUS))
+                    val reason = cursor?.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_REASON))
                     var reasonText = ""
-
+                    var statusText = ""
 
                     val bytesDownloaded = cursor?.getInt(
                         cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
@@ -140,7 +145,19 @@ class DownloadService : IntentService("DownloadService") {
                                 DownloadManager.ERROR_UNHANDLED_HTTP_CODE -> reasonText = "ERROR_UNHANDLED_HTTP_CODE"
                                 DownloadManager.ERROR_UNKNOWN -> reasonText = "ERROR_UNKNOWN"
                             }
-                            downloadManagerListener?.downloadFailed(reasonText, bytesDownloaded, bytesTotal)
+                            downloadManagerListener?.downloadFailed(
+                                DownloadModel(
+                                    id,
+                                    uri,
+                                    path,
+                                    title,
+                                    reason,
+                                    bytesDownloaded,
+                                    bytesTotal,
+                                    0,
+                                    reasonText
+                                )
+                            )
                             downloading = false
                         }
                         DownloadManager.STATUS_PAUSED -> {
@@ -150,37 +167,100 @@ class DownloadService : IntentService("DownloadService") {
                                 DownloadManager.PAUSED_WAITING_FOR_NETWORK -> reasonText = "PAUSED_WAITING_FOR_NETWORK"
                                 DownloadManager.PAUSED_WAITING_TO_RETRY -> reasonText = "PAUSED_WAITING_TO_RETRY"
                             }
-                            downloadManagerListener?.downloadPaused(reasonText, bytesDownloaded, bytesTotal)
-                            downloading = false
-                        }
-                        DownloadManager.STATUS_PENDING -> downloadManagerListener?.downloadPending(
-                            bytesDownloaded,
-                            bytesTotal
-                        )
-                        DownloadManager.STATUS_RUNNING -> downloadManagerListener?.downloadRunning(
-                            bytesDownloaded,
-                            bytesTotal
-                        )
-                        DownloadManager.STATUS_SUCCESSFUL -> {
-                            downloadManagerListener?.downloadSuccessful(
-                                bytesDownloaded,
-                                bytesTotal
+                            downloadManagerListener?.downloadPaused(
+                                DownloadModel(
+                                    id,
+                                    uri,
+                                    path,
+                                    title,
+                                    reason,
+                                    bytesDownloaded,
+                                    bytesTotal,
+                                    0,
+                                    reasonText
+                                )
                             )
                             downloading = false
+                        }
+                        DownloadManager.STATUS_PENDING -> {
+                            statusText = "STATUS_PENDING"
+                            downloadManagerListener?.downloadPending(
+                                DownloadModel(
+                                    id,
+                                    uri,
+                                    path,
+                                    title,
+                                    reason,
+                                    bytesDownloaded,
+                                    bytesTotal,
+                                    0,
+                                    reasonText
+                                )
+                            )
+                        }
+                        DownloadManager.STATUS_RUNNING -> {
+                            statusText = "STATUS_RUNNING"
+                            downloadManagerListener?.downloadRunning(
+                                DownloadModel(
+                                    id,
+                                    uri,
+                                    path,
+                                    title,
+                                    reason,
+                                    bytesDownloaded,
+                                    bytesTotal,
+                                    0,
+                                    reasonText
+                                )
+                            )
+                        }
+                        DownloadManager.STATUS_SUCCESSFUL -> {
+                            downloading = false
+                            statusText = "STATUS_SUCCESSFUL"
                             stopSelf()
+                            downloadManagerListener?.downloadSuccessful(
+                                DownloadModel(
+                                    id,
+                                    uri,
+                                    path,
+                                    title,
+                                    reason,
+                                    bytesDownloaded,
+                                    bytesTotal,
+                                    0,
+                                    reasonText
+                                )
+                            )
                         }
                     }
+
+                    Log.e("DownloadSongService", "getDownloadStatus " + statusText + " " + status)
+
+                    saveDownloadModel(
+                        DownloadModel(
+                            id,
+                            uri,
+                            path,
+                            title,
+                            status,
+                            bytesDownloaded,
+                            bytesTotal,
+                            0,
+                            reasonText
+                        )
+                    )
 
                 } else {
                     downloading = false
                 }
+
                 cursor?.close()
 
                 Thread.sleep(CALLBACK_LIMIT_TIME)
             }
         })
 
-        fun stopService() {
+        fun stopMyDownload() {
             this.stopSelf()
         }
 
