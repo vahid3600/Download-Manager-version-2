@@ -19,7 +19,10 @@ public interface DownloadDao {
     void saveListDownloadModel(List<DownloadModel> downloadModelList);
 
     @Query("select * from DownloadModel where id = :id")
-    LiveData<DownloadModel> getDownloadModel(int id);
+    LiveData<DownloadModel> getDownloadModelLiveData(int id);
+
+    @Query("select * from DownloadModel where id = :id")
+    DownloadModel getDownloadModel(int id);
 
     @Query("select * from DownloadModel")
     LiveData<List<DownloadModel>> getListDownloadModel();

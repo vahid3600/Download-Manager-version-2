@@ -1,13 +1,10 @@
 package com.example.yaramobile.downloadmanagerexample
 
-import android.arch.lifecycle.LiveData
 import android.arch.lifecycle.Observer
 import android.net.Uri
 import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
-import android.view.View
-import android.widget.Toast
 import com.example.yaramobile.downloadmanagerexample.database.DownloadModel
 import kotlinx.android.synthetic.main.activity_main.*
 
@@ -21,7 +18,7 @@ class MainActivity : AppCompatActivity() {
         var downloadManager = DownloadManager.initDownloadmanager(applicationContext)
 
         start.setOnClickListener {
-            downloadManager?.startDownload(
+            downloadManager?.addDownloadTask(
                 "http://5.239.244.167:1337/lyrics/api/files/bjCbe1h7B3DrLpZmCOwj1RYpgOPL4z8g/33cb19f604cbc1b4a4de95b8c946bac5_hWOMf19fFuc.mp4",
                 getPath("http://5.239.244.167:1337/lyrics/api/files/bjCbe1h7B3DrLpZmCOwj1RYpgOPL4z8g/33cb19f604cbc1b4a4de95b8c946bac5_hWOMf19fFuc.mp4")
             )

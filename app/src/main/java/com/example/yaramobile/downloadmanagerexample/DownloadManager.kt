@@ -1,6 +1,5 @@
 package com.example.yaramobile.downloadmanagerexample
 
-import android.app.Application
 import android.arch.lifecycle.LiveData
 import android.content.Context
 import android.content.Intent
@@ -12,6 +11,7 @@ import com.example.yaramobile.downloadmanagerexample.database.DownloadModel
 class DownloadManager {
 
     var intent: Intent? = null
+    val STATUS_QUEUE = 5
 
     companion object {
 
@@ -28,54 +28,23 @@ class DownloadManager {
         }
     }
 
-    fun startDownload(downloadUri: String, downloadPath: String) {
-        intent = DownloadService.getDownloadService(
-            context,
-            downloadUri,
-            downloadPath,
-            object : DownloadManagerListener {
-                override fun downloadFailed(downloadModel: DownloadModel) {
-                    Log.e("DownloadManager", "downloadFailed")
-                    checkDownloadDatabase()
+    fun addDownloadTask(downloadUri: String, downloadPath: String) {
 
-                }
-
-                override fun downloadPaused(downloadModel: DownloadModel) {
-                    Log.e("DownloadManager", "downloadPaused")
-                    checkDownloadDatabase()
-
-                }
-
-                override fun downloadPending(downloadModel: DownloadModel) {
-                    Log.e("DownloadManager", "downloadPending")
-                    checkDownloadDatabase()
-
-                }
-
-                override fun downloadRunning(downloadModel: DownloadModel) {
-                    Log.e("DownloadManager", "downloadRunning")
-                    checkDownloadDatabase()
-
-                }
-
-                override fun downloadSuccessful(downloadModel: DownloadModel) {
-                    Log.e("DownloadManager", "downloadSuccessful")
-                    checkDownloadDatabase()
-
-                }
-
-                override fun downloadStopped(downloadModel: DownloadModel) {
-                    Log.e("DownloadManager", "downloadStopped")
-                    checkDownloadDatabase()
-
-                }
-
-            }
+        saveDownloadModel(
+            DownloadModel(
+                0,
+                downloadUri,
+                downloadPath,
+                "",
+                STATUS_QUEUE,
+                0,
+                0,
+                0,
+                ""
+            )
         )
 
-        context?.startService(
-            intent
-        )
+        checkDownloadsDatabase(StartDownload())
     }
 
     fun stopDownload(downloadId: Long?) {
@@ -84,7 +53,7 @@ class DownloadManager {
     }
 
     public fun getDownloadModelLiveData(downloadId: Int): LiveData<DownloadModel> {
-        return DownloadDatabase.getDownloadDatabase(context).downloadDao().getDownloadModel(downloadId)
+        return DownloadDatabase.getDownloadDatabase(context).downloadDao().getDownloadModelLiveData(downloadId)
     }
 
     fun getListDownloadModelLiveData(): LiveData<List<DownloadModel>> {
@@ -102,10 +71,107 @@ class DownloadManager {
         return context?.filesDir?.absolutePath.toString()
     }
 
-    protected fun checkDownloadDatabase() {
-        Log.e("DownloadManager",
-            "checkDownloadDatabase " + DownloadDatabase.getDownloadDatabase(context).downloadDao()
-                .getDownloadModelListByStatus(android.app.DownloadManager.STATUS_RUNNING).size
+    protected fun checkDownloadsDatabase(downloadDatabaseListener: DownloadDatabaseListener) {
+        Log.e(
+            "DownloadManager",
+            "checkDownloadsDatabase " + runningDownloadsListSize() + " " + pendingDownloadsListSize() + " " + inQueueDownloadsListSize()
         )
+        if (runningDownloadsListSize() <= 0 && pendingDownloadsListSize() <= 0) {
+            downloadDatabaseListener.getDownloadModel(getInQueueDownloadsList()?.get(0))
+        } else
+            downloadDatabaseListener.dataNotAvailable()
+    }
+
+    private fun saveDownloadModel(downloadModel: DownloadModel?) {
+        Log.e("DownloadManager", "saveDownloadModel " + downloadModel?.id + " " + downloadModel?.downloadId)
+        DownloadDatabase.getDownloadDatabase(context).downloadDao()?.saveDownloadModel(downloadModel)
+    }
+
+    inner class StartDownload : DownloadDatabaseListener {
+
+        override fun getDownloadModel(downloadModel: DownloadModel?) {
+            Log.e(
+                "DownloadManager",
+                "getDownloadModelLiveData " + downloadModel + " " + runningDownloadsListSize() + " " + pendingDownloadsListSize() + " " + inQueueDownloadsListSize()
+            )
+
+            context?.startService(
+                DownloadService.getDownloadService(
+                    context,
+                    downloadModel?.downloadId,
+                    downloadModel?.url,
+                    downloadModel?.path,
+                    object : DownloadManagerListener {
+                        override fun downloadFailed(downloadModel: DownloadModel?) {
+                            saveDownloadModel(downloadModel)
+                            Log.e("DownloadManager", "downloadFailed")
+                            checkDownloadsDatabase(StartDownload())
+                        }
+
+                        override fun downloadPaused(downloadModel: DownloadModel?) {
+                            saveDownloadModel(downloadModel)
+                            Log.e("DownloadManager", "downloadPaused")
+                            checkDownloadsDatabase(StartDownload())
+                        }
+
+                        override fun downloadPending(downloadModel: DownloadModel?) {
+                            saveDownloadModel(downloadModel)
+                            Log.e("DownloadManager", "downloadPending")
+                            checkDownloadsDatabase(StartDownload())
+                        }
+
+                        override fun downloadRunning(downloadModel: DownloadModel?) {
+                            saveDownloadModel(downloadModel)
+                            Log.e("DownloadManager", "downloadRunning")
+                            checkDownloadsDatabase(StartDownload())
+                        }
+
+                        override fun downloadSuccessful(downloadModel: DownloadModel?) {
+                            saveDownloadModel(downloadModel)
+                            Log.e("DownloadManager", "downloadSuccessful")
+                            checkDownloadsDatabase(StartDownload())
+                        }
+
+                        override fun downloadStopped(downloadModel: DownloadModel?) {
+                            saveDownloadModel(downloadModel)
+                            Log.e("DownloadManager", "downloadStopped")
+                            checkDownloadsDatabase(StartDownload())
+                        }
+
+                    }
+                )
+            )
+        }
+
+        override fun dataNotAvailable() {
+            Log.e("DownloadManager", "dataNotAvailable")
+        }
+
+    }
+
+    protected fun runningDownloadsListSize(): Int {
+        return DownloadDatabase.getDownloadDatabase(context).downloadDao()
+            .getDownloadModelListByStatus(android.app.DownloadManager.STATUS_RUNNING).size
+    }
+
+    protected fun pendingDownloadsListSize(): Int {
+        return DownloadDatabase.getDownloadDatabase(context).downloadDao()
+            .getDownloadModelListByStatus(android.app.DownloadManager.STATUS_PENDING).size
+    }
+
+    protected fun inQueueDownloadsListSize(): Int {
+        return DownloadDatabase.getDownloadDatabase(context).downloadDao()
+            .getDownloadModelListByStatus(STATUS_QUEUE).size
+    }
+
+    protected fun getInQueueDownloadsList(): List<DownloadModel>? {
+        return DownloadDatabase.getDownloadDatabase(context).downloadDao()?.getDownloadModelListByStatus(STATUS_QUEUE)
+    }
+
+    interface DownloadDatabaseListener {
+
+        fun getDownloadModel(downloadModel: DownloadModel?)
+
+        fun dataNotAvailable()
     }
 }
