@@ -15,7 +15,9 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         var downloadService: DownloadService = DownloadService()
-        var downloadManager = DownloadManager.initDownloadmanager(applicationContext)
+        var downloadManager = DownloadManagerModule.initDownloadmanager(applicationContext)
+
+        downloadManager?.checkDownloadListStatus()
 
         start.setOnClickListener {
             downloadManager?.addDownloadTask(

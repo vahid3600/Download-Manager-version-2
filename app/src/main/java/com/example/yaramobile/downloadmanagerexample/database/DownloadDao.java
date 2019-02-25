@@ -4,6 +4,7 @@ import android.arch.lifecycle.LiveData;
 import android.arch.persistence.room.Dao;
 import android.arch.persistence.room.Insert;
 import android.arch.persistence.room.Query;
+import android.arch.persistence.room.Update;
 
 import java.util.List;
 
@@ -18,14 +19,20 @@ public interface DownloadDao {
     @Insert(onConflict = REPLACE)
     void saveListDownloadModel(List<DownloadModel> downloadModelList);
 
+    @Update
+    void updateDownloadModel(DownloadModel downloadModel);
+
     @Query("select * from DownloadModel where id = :id")
     LiveData<DownloadModel> getDownloadModelLiveData(int id);
 
-    @Query("select * from DownloadModel where id = :id")
-    DownloadModel getDownloadModel(int id);
+    @Query("select * from DownloadModel where url =:url and path =:path")
+    DownloadModel getDownloadModelByUrlAndPath(String url, String path);
 
     @Query("select * from DownloadModel")
     LiveData<List<DownloadModel>> getListDownloadModel();
+
+    @Query("select * from DownloadModel where id =:id")
+    DownloadModel getDownloadModelById(int id);
 
     @Query("select * from DownloadModel where status = 'completed'")
     LiveData<List<DownloadModel>> getAllCompletedDownloadModel();

@@ -13,11 +13,11 @@ import com.example.yaramobile.downloadmanagerexample.database.DownloadModel
 
 class DownloadService : IntentService("DownloadService") {
 
-    private val CALLBACK_LIMIT_TIME: Long = 100
     private var downloadDao: DownloadDao? = null
 
     companion object {
 
+        private val CALLBACK_LIMIT_TIME: Long = 100
         private val DOWNLOAD_TASK_ID = "com.spartons.androiddownloadmanager_DownloadSongService_Download_Task_ID"
         private val DOWNLOAD_PATH = "com.spartons.androiddownloadmanager_DownloadSongService_Download_path"
         private val DESTINATION_PATH = "com.spartons.androiddownloadmanager_DownloadSongService_Destination_path"
@@ -34,6 +34,9 @@ class DownloadService : IntentService("DownloadService") {
             destinationPath: String?,
             downloadManagerListener: DownloadManagerListener
         ): Intent {
+
+            Log.e("DownloadService", "getDownloadService " + downloadId)
+
             this.downloadManagerListener = downloadManagerListener
             return Intent(context, DownloadService::class.java)
                 .putExtra(DOWNLOAD_PATH, downloadPath)
@@ -62,6 +65,8 @@ class DownloadService : IntentService("DownloadService") {
         val downloadId = intent?.getIntExtra(DOWNLOAD_TASK_ID, 0)
         val downloadPath = intent?.getStringExtra(DOWNLOAD_PATH)
         val destinationPath = intent?.getStringExtra(DESTINATION_PATH)
+
+        Log.e("DownloadService", "onStartCommand " + downloadId)
 
         startDownload(downloadId, downloadPath, destinationPath)
         return Service.START_STICKY
@@ -121,6 +126,7 @@ class DownloadService : IntentService("DownloadService") {
 
                     when (status) {
                         DownloadManager.STATUS_FAILED -> {
+                            statusText = "STATUS_FAILED"
                             when (reason) {
                                 DownloadManager.ERROR_CANNOT_RESUME -> reasonText = "ERROR_CANNOT_RESUME"
                                 DownloadManager.ERROR_DEVICE_NOT_FOUND -> reasonText = "ERROR_DEVICE_NOT_FOUND"
@@ -136,7 +142,7 @@ class DownloadService : IntentService("DownloadService") {
                                 makeDownloadModel(
                                     downloadTaskId,
                                     id,
-                                    reason,
+                                    status,
                                     bytesDownloaded,
                                     bytesTotal,
                                     0,
@@ -146,6 +152,7 @@ class DownloadService : IntentService("DownloadService") {
                             downloading = false
                         }
                         DownloadManager.STATUS_PAUSED -> {
+                            statusText = "STATUS_PAUSED"
                             when (reason) {
                                 DownloadManager.PAUSED_QUEUED_FOR_WIFI -> reasonText = "PAUSED_QUEUED_FOR_WIFI"
                                 DownloadManager.PAUSED_UNKNOWN -> reasonText = "PAUSED_UNKNOWN"
@@ -156,7 +163,7 @@ class DownloadService : IntentService("DownloadService") {
                                 makeDownloadModel(
                                     downloadTaskId,
                                     id,
-                                    reason,
+                                    status,
                                     bytesDownloaded,
                                     bytesTotal,
                                     0,
@@ -171,7 +178,7 @@ class DownloadService : IntentService("DownloadService") {
                                 makeDownloadModel(
                                     downloadTaskId,
                                     id,
-                                    reason,
+                                    status,
                                     bytesDownloaded,
                                     bytesTotal,
                                     0,
@@ -185,7 +192,7 @@ class DownloadService : IntentService("DownloadService") {
                                 makeDownloadModel(
                                     downloadTaskId,
                                     id,
-                                    reason,
+                                    status,
                                     bytesDownloaded,
                                     bytesTotal,
                                     0,
@@ -202,7 +209,7 @@ class DownloadService : IntentService("DownloadService") {
                                 makeDownloadModel(
                                     downloadTaskId,
                                     id,
-                                    reason,
+                                    status,
                                     bytesDownloaded,
                                     bytesTotal,
                                     0,
@@ -212,7 +219,10 @@ class DownloadService : IntentService("DownloadService") {
                         }
                     }
 
-                    Log.e("DownloadSongService", "getDownloadStatus " + status + " " + statusText)
+                    Log.e(
+                        "DownloadSongService",
+                        "getDownloadStatus " + downloadTaskId + " " + status + " " + statusText
+                    )
                 } else {
                     downloading = false
                 }
@@ -222,10 +232,6 @@ class DownloadService : IntentService("DownloadService") {
                 Thread.sleep(CALLBACK_LIMIT_TIME)
             }
         })
-
-        fun stopMyDownload() {
-            this.stopSelf()
-        }
 
         mThread?.start()
     }
@@ -241,12 +247,17 @@ class DownloadService : IntentService("DownloadService") {
     ): DownloadModel? {
         val downloadModel =
             downloadTaskId?.let {
-                DownloadDatabase.getDownloadDatabase(applicationContext).downloadDao().getDownloadModel(
+                DownloadDatabase.getDownloadDatabase(applicationContext).downloadDao().getDownloadModelById(
                     it
                 )
             }
 
-        downloadModel?.id = downloadId
+        Log.e(
+            "DownloadService",
+            "makeDownloadModel " + downloadModel?.downloadId + " " + downloadModel?.id + " " + downloadModel?.status
+        )
+
+        downloadModel?.downloadId = downloadId
         downloadModel?.status = status
         downloadModel?.soFarBytes = bytesDownloaded
         downloadModel?.totalBytes = totalBytes
