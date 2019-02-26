@@ -18,36 +18,44 @@ class DownloadService : IntentService("DownloadService") {
     companion object {
 
         private val CALLBACK_LIMIT_TIME: Long = 100
-        private val DOWNLOAD_TASK_ID = "com.spartons.androiddownloadmanager_DownloadSongService_Download_Task_ID"
+        private val DOWNLOAD_ID = "com.spartons.androiddownloadmanager_DownloadSongService_Download_ID"
+        private val DOWNLOAD_MANAGER_ID = "com.spartons.androiddownloadmanager_DownloadSongService_Download_Manager_ID"
         private val DOWNLOAD_PATH = "com.spartons.androiddownloadmanager_DownloadSongService_Download_path"
         private val DESTINATION_PATH = "com.spartons.androiddownloadmanager_DownloadSongService_Destination_path"
+        var serviceMode: Any? = null
         var mThread: Thread? = null
         var downloadManager: DownloadManager? = null
         var downloadManagerListener: DownloadManagerListener? = null
-        var downloadId: Long? = null
+        var downloadManagerId: Long? = null
         var instance: DownloadService? = null
 
         fun getDownloadService(
+            serviceMode: ServiceMode,
             context: Context?,
             downloadId: Int?,
+            downloadManagerId: Int?,
             downloadPath: String?,
-            destinationPath: String?,
-            downloadManagerListener: DownloadManagerListener
+            destinationPath: String?
         ): Intent {
 
             Log.e("DownloadService", "getDownloadService " + downloadId)
+            this.serviceMode = serviceMode
 
-            this.downloadManagerListener = downloadManagerListener
             return Intent(context, DownloadService::class.java)
                 .putExtra(DOWNLOAD_PATH, downloadPath)
                 .putExtra(DESTINATION_PATH, destinationPath)
-                .putExtra(DOWNLOAD_TASK_ID, downloadId)
+                .putExtra(DOWNLOAD_ID, downloadId)
+                .putExtra(DOWNLOAD_MANAGER_ID, downloadManagerId)
         }
 
         fun stopDownload(downloadId: Long?) {
             downloadId?.let { downloadManager?.remove(it) }
             mThread?.isInterrupted
             mThread?.join()
+        }
+
+        fun setListener(downloadManagerListener: DownloadManagerListener?) {
+            this.downloadManagerListener = downloadManagerListener
         }
     }
 
@@ -62,40 +70,54 @@ class DownloadService : IntentService("DownloadService") {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 
-        val downloadId = intent?.getIntExtra(DOWNLOAD_TASK_ID, 0)
-        val downloadPath = intent?.getStringExtra(DOWNLOAD_PATH)
-        val destinationPath = intent?.getStringExtra(DESTINATION_PATH)
+        val downloadId = intent?.getIntExtra(DOWNLOAD_ID, 0)
+        val downloadManagerId = intent?.getLongExtra(DOWNLOAD_MANAGER_ID, 0)
+        val downloadUrl = intent?.getStringExtra(DOWNLOAD_PATH)
+        val downloadPath = intent?.getStringExtra(DESTINATION_PATH)
 
-        Log.e("DownloadService", "onStartCommand " + downloadId)
+        Log.e("DownloadService", "onStartCommand " + downloadId + " " + downloadUrl + " " + downloadPath)
 
-        startDownload(downloadId, downloadPath, destinationPath)
+        startDownload(downloadId, downloadManagerId, downloadUrl, downloadPath)
         return Service.START_STICKY
     }
 
     private fun initDataBase() {
-        downloadDao = DownloadDatabase.getDownloadDatabase(applicationContext).downloadDao()
+        downloadDao = DownloadDatabase.getDownloadDatabase(application).downloadDao()
     }
 
 
-    private fun startDownload(downloadTaskId: Int?, downloadPath: String?, destinationPath: String?) {
+    private fun startDownload(
+        downloadId: Int?,
+        downloadManagerId: Long?,
+        downloadPath: String?,
+        destinationPath: String?
+    ) {
 
         val fileName: CharSequence? =
             downloadPath?.lastIndexOf('.')?.let { downloadPath.substring(downloadPath.lastIndexOf('/') + 1, it) }
 
-        val uri = Uri.parse(downloadPath) // Path where you want to download file.
-        downloadManager = (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager)
-        val request = DownloadManager.Request(uri)
+        if (Companion.serviceMode == ServiceMode.Download) {
+            val uri: Uri? = Uri.parse(downloadPath) // Path where you want to download file.
+            downloadManager = (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager)
+            val request = DownloadManager.Request(uri)
 
-        request.setAllowedNetworkTypes(DownloadManager.Request.NETWORK_MOBILE or DownloadManager.Request.NETWORK_WIFI)  // Tell on which network you want to download file.
-        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)  // This will show notification on top when downloading the file.
-        request.setTitle(fileName) // Title for notification.
-        request.setVisibleInDownloadsUi(true)
-        request.setDestinationInExternalPublicDir(destinationPath, uri.getLastPathSegment())  // Storage directory path
-        downloadId = downloadManager?.enqueue(request) // This will start downloading
-        getDownloadStatus(downloadId, downloadTaskId)
+            request.setAllowedNetworkTypes(DownloadManager.Request.NETWORK_MOBILE or DownloadManager.Request.NETWORK_WIFI)  // Tell on which network you want to download file.
+            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)  // This will show notification on top when downloading the file.
+            request.setTitle(fileName) // Title for notification.
+            request.setVisibleInDownloadsUi(true)
+            request.setDestinationInExternalPublicDir(
+                destinationPath,
+                uri?.getLastPathSegment()
+            )  // Storage directory path
+            var mDownloadManagerId = downloadManager?.enqueue(request) // This will start downloading
+            getDownloadStatus(mDownloadManagerId, downloadId)
+        } else {
+            Log.e("DownloadService", "startDownload ")
+            getDownloadStatus(downloadManagerId, downloadId)
+        }
     }
 
-    private fun getDownloadStatus(downloadId: Long?, downloadTaskId: Int?) {
+    private fun getDownloadStatus(downloadManagerId: Long?, downloadId: Int?) {
 
         mThread = Thread(Runnable {
 
@@ -104,13 +126,14 @@ class DownloadService : IntentService("DownloadService") {
             while (downloading) {
 
                 val q = DownloadManager.Query()
-                downloadId?.let { q.setFilterById(it) }
-                val cursor = downloadManager?.query(downloadId?.let { DownloadManager.Query().setFilterById(it) })
+                downloadManagerId?.let { q.setFilterById(it) }
+                val cursor =
+                    downloadManager?.query(downloadManagerId?.let { DownloadManager.Query().setFilterById(it) })
 
                 cursor?.moveToFirst()
 
                 if (cursor?.count != 0) {
-                    val id = cursor?.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_ID))
+                    val downloadManagerId = cursor?.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_ID))
                     val uri = cursor?.getString(cursor.getColumnIndex(DownloadManager.COLUMN_URI))
                     val path = cursor?.getString(cursor.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI))
                     val title = cursor?.getString(cursor.getColumnIndex(DownloadManager.COLUMN_TITLE))
@@ -140,12 +163,11 @@ class DownloadService : IntentService("DownloadService") {
                             }
                             downloadManagerListener?.downloadFailed(
                                 makeDownloadModel(
-                                    downloadTaskId,
-                                    id,
+                                    downloadId,
+                                    downloadManagerId,
                                     status,
                                     bytesDownloaded,
                                     bytesTotal,
-                                    0,
                                     reasonText
                                 )
                             )
@@ -161,12 +183,11 @@ class DownloadService : IntentService("DownloadService") {
                             }
                             downloadManagerListener?.downloadPaused(
                                 makeDownloadModel(
-                                    downloadTaskId,
-                                    id,
+                                    downloadId,
+                                    downloadManagerId,
                                     status,
                                     bytesDownloaded,
                                     bytesTotal,
-                                    0,
                                     reasonText
                                 )
                             )
@@ -176,12 +197,11 @@ class DownloadService : IntentService("DownloadService") {
                             statusText = "STATUS_PENDING"
                             downloadManagerListener?.downloadPending(
                                 makeDownloadModel(
-                                    downloadTaskId,
-                                    id,
+                                    downloadId,
+                                    downloadManagerId,
                                     status,
                                     bytesDownloaded,
                                     bytesTotal,
-                                    0,
                                     reasonText
                                 )
                             )
@@ -190,12 +210,11 @@ class DownloadService : IntentService("DownloadService") {
                             statusText = "STATUS_RUNNING"
                             downloadManagerListener?.downloadRunning(
                                 makeDownloadModel(
-                                    downloadTaskId,
-                                    id,
+                                    downloadId,
+                                    downloadManagerId,
                                     status,
                                     bytesDownloaded,
                                     bytesTotal,
-                                    0,
                                     reasonText
                                 )
                             )
@@ -207,12 +226,11 @@ class DownloadService : IntentService("DownloadService") {
                             stopSelf()
                             downloadManagerListener?.downloadSuccessful(
                                 makeDownloadModel(
-                                    downloadTaskId,
-                                    id,
+                                    downloadId,
+                                    downloadManagerId,
                                     status,
                                     bytesDownloaded,
                                     bytesTotal,
-                                    0,
                                     reasonText
                                 )
                             )
@@ -221,7 +239,7 @@ class DownloadService : IntentService("DownloadService") {
 
                     Log.e(
                         "DownloadSongService",
-                        "getDownloadStatus " + downloadTaskId + " " + status + " " + statusText
+                        "getDownloadStatus " + downloadId + " " + status + " " + statusText
                     )
                 } else {
                     downloading = false
@@ -237,33 +255,35 @@ class DownloadService : IntentService("DownloadService") {
     }
 
     fun makeDownloadModel(
-        downloadTaskId: Int?,
         downloadId: Int?,
+        downloadManagerId: Int?,
         status: Int?,
         bytesDownloaded: Int?,
         totalBytes: Int?,
-        downloadSpeed: Int?,
         downloadError: String?
     ): DownloadModel? {
         val downloadModel =
-            downloadTaskId?.let {
-                DownloadDatabase.getDownloadDatabase(applicationContext).downloadDao().getDownloadModelById(
+            downloadId?.let {
+                DownloadDatabase.getDownloadDatabase(application).downloadDao().getDownloadModelById(
                     it
                 )
             }
 
         Log.e(
             "DownloadService",
-            "makeDownloadModel " + downloadModel?.downloadId + " " + downloadModel?.id + " " + downloadModel?.status
+            "makeDownloadModel " + downloadModel?.downloadManagerId + " " + downloadModel?.id + " " + downloadModel?.status
         )
 
-        downloadModel?.downloadId = downloadId
+        downloadModel?.downloadManagerId = downloadManagerId
         downloadModel?.status = status
         downloadModel?.soFarBytes = bytesDownloaded
         downloadModel?.totalBytes = totalBytes
-        downloadModel?.downloadSpeed = downloadSpeed
         downloadModel?.downloadError = downloadError
 
         return downloadModel
+    }
+
+    enum class ServiceMode {
+        Download, Callback
     }
 }
